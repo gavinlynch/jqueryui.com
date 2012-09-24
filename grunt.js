@@ -91,7 +91,7 @@ grunt.registerTask( "build-demos", function() {
 	this.requires( "build-download" );
 
 	var path = require( "path" ),
-		jsdom = require( "jsdom" ).jsdom,
+		cheerio = require( "cheerio" ),
 		repoDir = path.dirname( require.resolve( "download.jqueryui.com" ) ) +
 			"/tmp/jquery-ui",
 		demosDir = repoDir + "/demos",
@@ -106,7 +106,7 @@ grunt.registerTask( "build-demos", function() {
 			return;
 		}
 
-		var content, document, description, title,
+		var content, $,
 			dest = targetDir + "/" + subdir + "/" + filename,
 			highlightDest = highlightDir + "/" + subdir + "/" + filename;
 
@@ -114,33 +114,24 @@ grunt.registerTask( "build-demos", function() {
 			content = replaceResources( grunt.file.read( abspath ) );
 
 			if ( !( /(\/)/.test( subdir ) ) ) {
-				document = jsdom( content, null, {
-					features: {
-						FetchExternalResources: [],
-						ProcessExternalResources: false
-					}
-				});
-				description = document.getElementsByClassName( "demo-description" )[0];
-				description.parentNode.removeChild( description );
-				title = document.getElementsByTagName( "title" )[0];
+				$ = cheerio.load( content ).root();
 				if ( !demoList[ subdir ] ) {
 					demoList[ subdir ] = {};
 				}
 				demoList[ subdir ][ filename.substr( 0, filename.length - 5 ) ] = {
-					title: title.innerHTML.replace( /[^\-]+\s-\s/, '' ),
-					description: description.innerHTML
+					title: $.find( "title" ).text().replace( /[^\-]+\s-\s/, '' ),
+					description: $.find( ".demo-description" ).remove().html()
 				};
 
 				// Save modified demo
-				content = "<!doctype html>\n" + document.innerHTML;
+				content = $.html();
 				grunt.file.write( dest, content );
 
 				// Create syntax highlighted version
-				document.innerHTML = "<pre><code data-linenum='true'></code></pre>";
-				document.getElementsByTagName( "code" )[0].appendChild(
-					document.createTextNode( content ) );
+				$ = cheerio.load( "<pre><code data-linenum='true'></code></pre>" ).root();
+				$.find( "code" ).text( content );
 				grunt.file.write( highlightDest,
-					grunt.helper( "syntax-highlight", { content: document.innerHTML } ) );
+					grunt.helper( "syntax-highlight", { content: $.html() } ) );
 			} else {
 				grunt.file.write( dest, content );
 			}
@@ -177,7 +168,7 @@ grunt.registerTask( "build-demos", function() {
 		// Only the first script is replaced, all subsequent scripts are dropped,
 		// including the full line
 		source = source.replace(
-			/<script src="\.\.\/\.\.\/ui\/[^>]+/,
+			/<script src="\.\.\/\.\.\/ui\/[^>]+>/,
 			"<script src=\"/resources/demos/jquery-ui.js\">" );
 		source = source.replace(
 			/^.*<script src="\.\.\/\.\.\/ui\/[^>]+><\/script>\n/gm,
